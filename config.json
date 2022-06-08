@@ -1,0 +1,9 @@
+{
+  "user": "postgres",
+  "password": "password",
+  "host": "localhost",
+  "database": "cs223-project-db",
+  "leader_port": 5433,
+  "follower1_port": 5434,
+  "follower2_port": 5435
+}
