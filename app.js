@@ -7,8 +7,7 @@ var logger = require('morgan');
 var indexRouter = require('./routes/index');
 
 //Routers
-var getColumns = require('./routes/MiscFunctions/getColumns');
-var test = require('./routes/MiscFunctions/test');
+var leader = require('./routes/Leader/LeaderRouter');
 
 var app = express();
 
@@ -25,10 +24,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 
 //Misc
-app.use('/column/:id', getColumns);
+app.use('/leader', leader);
 
-//test
-app.use('/test', test);
 
 
 

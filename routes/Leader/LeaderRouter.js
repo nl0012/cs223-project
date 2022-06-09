@@ -7,6 +7,8 @@
 
 const leaderModel = require('./LeaderModel');
 const express = require('express');
+
+
 var router = express.Router({mergeParams:true});
 
 /**
@@ -15,27 +17,32 @@ var router = express.Router({mergeParams:true});
 * For format of req body, please check the report documentation
 **/
 router.post('/', (req,res) => {
-    let responses = {};
+    let promises = [];
+
    //parse request body into read-set and write-set
-   const {read,commit} = body;
+   const {read,commit} = req.body;
    if (read.length > 0){ //if read set non-empty
        //call leader model function to execute reads
-       leaderModel.executeReads(read).then(response => {
-//             res.status(200).send(response);
-            responses['read_response'] = response;
-       }).catch(error => {
-       res.status(500).send(error);
-       });
+       // append response of read request to global responses
+       promises.push(Promise.all(leaderModel.executeReads(read)));
    }
 
    if(commit.length > 0) { //if commit set non-empty
         //call leader model function to start postgreSQL transaction
-        leaderModel.executeCommit(commit).then(response => {
-            responses['commit_response'] = response;
-        }).catch(error => {
-        res.status(500).send(error);
-        });
+        // append response of commit request to global responses
+        promises.push(
+        leaderModel.executeCommit(commit)
+        );
    }
+
+    Promise.all(promises).then((responses) => {
+        responses.forEach((ops, key) => {
+            ops.forEach((op_response,key1)=> {
+                res.write(op_response.operation + ': ' + JSON.stringify(op_response.results[0]) + '\n');
+            })
+        })
+        res.status(200).end();
+    })
 
 })
 
