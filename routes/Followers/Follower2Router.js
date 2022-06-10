@@ -56,4 +56,9 @@ router.post('/', (req,res) => {
 
 })
 
+router.get('/', (req,res) => {
+    let status = followerModel.checkStatus('follower2');
+    res.status(200).send(status);
+});
+
 module.exports = router;

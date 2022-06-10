@@ -9,6 +9,8 @@ const config = require('../../config.json');
 const axios = require('axios').default;
 const fs = require('fs');
 
+
+
 //PostgreSQL pool that connects to leader database instance
 const pool = new Pool({
     user: config.user,
@@ -65,14 +67,14 @@ const logTransaction = (write_set, results) => {
         //need old value which we get from the results array, each result maps directly to a write in the write_set at the same index
         let update_old_value = Object.values(results[key][0])[0];
        // console.log(update_old_value);
-         log_lines +='<T'+ transactionId+', UPDATE, '+ write.table_name+ ', '+write.update_value+'>\n';
-         log_lines += '<T'+ transactionId+', OPERATION-END, <UPDATE, '+ write.table_name + ', '+update_old_value+'>>\n';
+         log_lines +='<T'+ transactionId+', UPDATE, '+ write.table_name+ ', <'+write.primary_column+','+write.primary_value+'>, <'+write.update_column+','+write.update_value+'>>\n';
+         log_lines += '<T'+ transactionId+', OPERATION-END, <UPDATE, '+ write.table_name + ', <'+write.primary_column+','+write.primary_value+'>, <'+write.update_column+','+update_old_value+'>>>\n';
 
        }
 
     })
-         log_lines +=  '<T'+ transactionId+', TRANSACTION-END>\n';
-    fs.appendFileSync(file_name, log_lines, 'utf-8');
+    log_lines +=  '<T'+ transactionId+', TRANSACTION-COMMIT>\n';
+    fs.writeFileSync(file_name, log_lines, 'utf-8');
     transactionId++;
     return log_lines;
 }
@@ -178,7 +180,28 @@ const sendCommitToFollowers = async (commit_set,log_lines) => {
         contentType: 'application/json',
         data: {"commit_set":commit_set,"log":log_lines}
     });
+    logTransactionEnd(log_lines[2]);
     return {result1,result2};
+}
+
+const getStatusFromFollowers = async () => {
+    const result1 = await axios({
+         method: 'get',
+         url: config.follower1_url
+        });
+
+   const result2 = await axios({
+         method: 'get',
+         url: config.follower2_url
+        });
+   return [result1,result2];
+}
+
+const logTransactionEnd = (tid) => {
+       let filename = 'leader_replication_log.txt';
+       let  log_lines =  '<T'+ tid+', TRANSACTION-END>\n';
+       fs.appendFileSync(filename, log_lines, 'utf-8');
+
 }
 
 const startTransaction = () => {
@@ -261,9 +284,91 @@ const readOnlyTransaction = (read_set) => {
 }
 
 
+/**
+*  Function to recover from leader failure
+*  2PC coordinator recovery
+*  If log does not contain commit then abort transaction -> this would not happen because a log is only written if changes written to database
+*  If commit record but no completion record, then ask followers for status
+*
+**/
+const recoveryAlgorithm = async () => {
+
+    return new Promise(async function(resolve,reject) {
+         var lines = fs.readFileSync('leader_replication_log.txt', 'utf-8')
+         .split('\n')
+         .filter(Boolean);
+
+        //check last line to see if transaction ended
+        if(lines[lines.length-1].includes('TRANSACTION-END')) {
+            //if transaction ended no additional action is needed
+            //just get the latest transaction number
+            transactionId = lines[lines.length-1][2] + 1;
+            resolve('No transactions to redo. Recovery Complete.');
+        }
+        else {
+        //has not ended yet
+        //loop backwards and check if commit record is available
+        let committed = false;
+         for(var i = lines.length-1; i >= 0; i--){
+            if(lines[i].includes('TRANSACTION-COMMIT')){
+                committed = true;
+            }
+         }
+
+         //if commit found
+         if (committed == true){
+            //GET transaction id
+            let tid = lines[lines.length-1][2];
+            //check status of followers
+           let result = await getStatusFromFollowers();
+           if(result[0] == true && result[1] == true) {
+                //if commits have been sent to followers, then write completion entry
+                logTransactionEnd(tid);
+                resolve('Transaction has been committed, transaction end has been logged. Recovery Complete.');
+           }
+           else{
+            //if not committed, recreate write set and send it to followers
+             let commit_set = recreateCommitSet(lines);
+             let send_commit = await sendCommitToFollowers(commit_set, lines);
+               resolve('Transaction has been resent to followers. Transaction is complete. Recovery Complete.');
+           }
+         }
+
+        }
+
+
+    })
+}
+
+const recreateCommitSet = (log_lines) => {
+    let commit_set = [];
+    log_lines.forEach((line,key)=> {
+        if ((!line.includes('-END') || line.includes('-COMMIT') || line.includes('-BEGIN'))) {
+            let parsed_line = line.split(',');
+
+            if (parsed_line[1] === 'INSERT'){
+             let data = '['+ line.split('[')[1].slice(0,-1);
+                console.log('data',data);
+                commit_set.push({"table_name":parsed_line[2],"data":JSON.parse(data)});
+            }
+            else { //update
+                let table_name = parsed_line[2];
+                let primary_col = parsed_line[3].replaceAll('<','');
+                let primary_val = parsed_line[4].replaceAll('>','');
+                let update_col = parsed_line[5].replaceAll('<','');
+                let update_val = parsed_line[6].replaceAll('>','');
+                commit_set.push({"table_name":table_name, "update_column":update_col,"update_value":update_val,"primary_column":primary_col,"primary_value":primary_val});
+
+            }
+
+        }
+    })
+    return commit_set;
+}
 module.exports = {
 startTransaction,
 executeCommit,
 executeReads,
-readOnlyTransaction
+readOnlyTransaction,
+recoveryAlgorithm,
 }

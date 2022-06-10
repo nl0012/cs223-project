@@ -102,16 +102,42 @@ const readOnlyTransaction = (read_set, follower_id, pool) => {
 }
 
 /**
+* Function to check status of follower by checking if COMMIT was logged
+**/
+const checkStatus = (follower_id) => {
+    let filename = follower_id+'_replication_log.txt';
+    var lines = fs.readFileSync(filename, 'utf-8')
+            .split('\n')
+            .filter(Boolean);
+    let committed = false;
+    for( line of lines) {
+        if(line.includes('TRANSACTION-COMMIT')) {
+            committed = true;
+        }
+    }
+
+    if (committed == true){
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+/**
 * Function to log the transaction that was just committed
 * The log follows logical logging style
 **/
 const logTransaction = (log_lines, follower_id) => {
-        let file_name = follower_id+'_replication_log.txt';
-      fs.appendFileSync(file_name, log_lines, 'utf-8');
+    let transactionId = log_lines[2];
+     log_lines +=  '<T'+ transactionId+', TRANSACTION-END>\n';
+     let file_name = follower_id+'_replication_log.txt';
+      fs.writeFileSync(file_name, log_lines, 'utf-8');
 }
 
 module.exports = {
 executeCommit,
 logTransaction,
 readOnlyTransaction,
+checkStatus,
 }
