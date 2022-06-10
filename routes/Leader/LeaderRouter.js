@@ -17,10 +17,24 @@ var router = express.Router({mergeParams:true});
 * For format of req body, please check the report documentation
 **/
 router.post('/', (req,res) => {
-    let promises = [];
+    let promises = [], read = [], commit = [], read_only = [];
 
-   //parse request body into read-set and write-set
-   const {read,commit} = req.body;
+   //parse request body into read-set and write-set or READ-ONLY
+   if ('read_only' in req.body) {
+        read_only = req.body.read_only;
+       Promise.all(leaderModel.readOnlyTransaction(read_only)).then((reads)=> {
+                console.log(reads);
+                reads.forEach((read,key)=> {
+                    res.write(read.operation+ ': '+ JSON.stringify(read.results[0])+'\n');
+                })
+            res.status(200).end();
+            })
+    return;
+   }
+   else {
+        read = req.body.read;
+        commit = req.body.commit;
+   }
    if (read.length > 0){ //if read set non-empty
        //call leader model function to execute reads
        // append response of read request to global responses

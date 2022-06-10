@@ -8,6 +8,8 @@ var indexRouter = require('./routes/index');
 
 //Routers
 var leader = require('./routes/Leader/LeaderRouter');
+var follower1 = require('./routes/Followers/Follower1Router');
+var follower2 = require('./routes/Followers/Follower2Router');
 
 var app = express();
 
@@ -25,6 +27,9 @@ app.use('/', indexRouter);
 
 //Misc
 app.use('/leader', leader);
+app.use('/follower1',follower1);
+app.use('/follower2',follower2);
+
 
 
 

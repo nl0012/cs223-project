@@ -4,6 +4,8 @@
   "host": "localhost",
   "database": "cs223-project-db",
   "leader_port": 5433,
-  "follower1_port": 5434,
-  "follower2_port": 5435
+  "follower1_port": 5432,
+  "follower2_port": 5434,
+  "follower1_url": "http://127.0.0.1:9000/follower1",
+  "follower2_url": "http://127.0.0.1:9000/follower2"
 }
